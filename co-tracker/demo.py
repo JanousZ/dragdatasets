@@ -31,7 +31,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--video_json",
-        default="/home/yanzhang/dragdatasets/labeled_data.jsonl",
+        #default="/home/yanzhang/dragdatasets/labeled_data.jsonl",
+        default=None,
         help="video paths",
     )
     parser.add_argument(
