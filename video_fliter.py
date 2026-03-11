@@ -11,10 +11,68 @@ from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
 from qwen_vl_utils import process_vision_info
 from multiprocessing import Pool
 import cv2
+import subprocess
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # --- 配置路径 ---
 CSV_PATH = "/mnt/disk1/datasets/drag_data/OpenVid-1M.csv"
 VIDEO_ROOT = "/mnt/disk1/datasets/drag_data" # 递归扫描的起点
+
+# 单个视频处理函数
+def process_single_video_crop(video_path):
+    video_str = str(video_path)
+    probe_cmd = [
+        'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+        '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0',
+        video_str
+    ]
+    try:
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, check=True)
+        if not result.stdout.strip():
+            return f"跳过（无法读取尺寸）: {video_str}"
+        w, h = map(int, result.stdout.strip().split('x'))
+    except Exception:
+        return f"跳过（无法读取尺寸）: {video_str}"
+    if w % 8 == 0 and h % 8 == 0:
+        return None  # 已经是 8 的倍数，跳过
+    target_w = w - (w % 8)
+    target_h = h - (h % 8)
+    temp_output = video_str + ".temp_crop.mp4"
+    crop_cmd = [
+        'ffmpeg', '-y', '-i', video_str,
+        '-vf', f"crop={target_w}:{target_h}",
+        '-c:v', 'libx264', '-crf', '18',
+        '-c:a', 'copy', '-loglevel', 'error',
+        temp_output
+    ]
+    try:
+        subprocess.run(crop_cmd, check=True)
+        os.replace(temp_output, video_str)
+        return f"裁剪完成: {video_str} ({w}x{h} -> {target_w}x{target_h})"
+    except subprocess.CalledProcessError:
+        if os.path.exists(temp_output):
+            os.remove(temp_output)
+        return f"处理失败: {video_str}"
+
+# 多线程版本
+
+def process_videos_crop(root_dir, num_workers=128):
+    """
+    递归查找 root_dir 下所有视频，检查宽高是否为 8 的倍数，
+    若不是则进行中心裁剪并覆盖原文件。多线程加速。
+    """
+    video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.webm'}
+    all_files = list(Path(root_dir).rglob("*"))
+    video_files = [f for f in all_files if f.suffix.lower() in video_extensions]
+    print(f"共发现 {len(video_files)} 个视频文件，开始检查...")
+    results = []
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = {executor.submit(process_single_video_crop, video_path): video_path for video_path in video_files}
+        for f in tqdm(as_completed(futures), total=len(futures), desc="裁剪视频进度(多线程)"):
+            res = f.result()
+            if res:
+                print(res)
 
 def prepare_processing_static_list(csv_path, video_root):
     """
@@ -59,6 +117,10 @@ def prepare_processing_static_list(csv_path, video_root):
                 else:
                     # 记录一下：在 CSV 中但被过滤掉（非 static）的情况
                     found_but_not_static += 1
+                    # 删除该文件（如果需要的话，谨慎操作！）
+
+                    # if v_name_with_ext in df['video'].astype(str).values:
+                    #     os.remove(os.path.join(root, file))
 
     print(f"筛选完成！")
     print(f"- 成功匹配 (Static + 有描述): {match_count} 条")
@@ -222,6 +284,8 @@ def _merge_to_main(temp_file, main_file):
             shutil.copyfileobj(src, dest)
     os.remove(temp_file)
 
+# process_videos_crop(VIDEO_ROOT) # 先处理视频裁剪，确保后续分析的视频尺寸符合要求
+
 matched_df = prepare_processing_static_list(CSV_PATH, VIDEO_ROOT)
 
 # 预览结果
@@ -231,5 +295,5 @@ if not matched_df.empty:
 else:
     print("未找到符合 static 筛选条件的视频，请检查 CSV 列名或内容。")
 
-test_df = matched_df.head(9) # 取前 9 条进行测试
-run_multigpu_labeling(test_df)
+# test_df = matched_df.head(9) # 取前 9 条进行测试
+# run_multigpu_labeling(test_df)

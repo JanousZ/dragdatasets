@@ -26,7 +26,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--video_path",
-        default="/home/yanzhang/Video-T1/final_results/A_close-up_shot_captures_a_kangaroo_in_its_natural_habitat,_its_fur_a_rich_blend_of_earthy_browns_an.mp4",
+        default="/home/yanzhang/Video-T1/final_results/A_charming_wooden_birdhouse,_painted_in_vibrant_hues_of_red_and_blue,_hangs_gracefully_from_a_sturdy.mp4",
         help="path to a video",
     )
     parser.add_argument(
@@ -34,6 +34,11 @@ if __name__ == "__main__":
         #default="/home/yanzhang/dragdatasets/labeled_data.jsonl",
         default=None,
         help="video paths",
+    )
+    parser.add_argument(
+        "--video_dir",
+        default="/mnt/disk1/datasets/drag_data/animal/video",
+        type=str,
     )
     parser.add_argument(
         "--mask_path",
@@ -45,7 +50,7 @@ if __name__ == "__main__":
         default="./checkpoints/scaled_offline.pth",
         help="CoTracker model parameters",
     )
-    parser.add_argument("--grid_size", type=int, default=10, help="Regular grid size")
+    parser.add_argument("--grid_size", type=int, default=30, help="Regular grid size")
     parser.add_argument(
         "--grid_query_frame",
         type=int,
@@ -105,6 +110,13 @@ if __name__ == "__main__":
                 # 提取字段
                 video_paths.append(data["full_path"])
                 video_names.append(data["video"])
+    elif args.video_dir is not None:
+        video_paths = []
+        video_names = []
+        for filename in os.listdir(args.video_dir):
+            if filename.endswith(".mp4") or filename.endswith(".avi"):
+                video_paths.append(os.path.join(args.video_dir, filename))
+                video_names.append(filename.split(".")[0])
     else:
         video_paths = [args.video_path]
         video_names = [args.video_path.split("/")[-1].split(".")[0]]
@@ -118,9 +130,8 @@ if __name__ == "__main__":
 
         video = video.to(DEFAULT_DEVICE)
 
-        points = process_video_pair(video_path, stride=50)
-
         # points = [ (128,128), (172,172), (256,256)]  # (w,h)
+        points = process_video_pair(video_path, sample_interval=5, num_points=10)
         frame_idx = 0  # 这些点所在的帧
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)  # shape (1, N, 3)
         pred_tracks, pred_visibility = model(video, queries=queries)
@@ -137,11 +148,14 @@ if __name__ == "__main__":
 
         # save a video with predicted tracks
         seq_name = video_path.split("/")[-1]
-        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        vis = Visualizer(save_dir="./saved_videos/grid", pad_value=120, linewidth=2)
         vis.visualize(
             video,
             pred_tracks,
             pred_visibility,
             query_frame=0 if args.backward_tracking else args.grid_query_frame,
-            filename=f"{video_names[i]}.mp4",
+            filename=f"{video_names[i]}",
         )
+
+        if i > 20:
+            break

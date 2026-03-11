@@ -33,7 +33,7 @@ class MotionSampler:
         magnitude = torch.norm(flow, dim=0)
         return flow, magnitude
 
-    def sample_significant_points(self, magnitude, num_samples=50, grid_size=16, threshold_quantile=0.95):
+    def sample_significant_points(self, magnitude, num_samples=50, grid_size=8, threshold_quantile=0.95):
         """
         优化后的采样策略：
         1. 动态阈值：保留运动显著区域。
@@ -150,24 +150,33 @@ class MotionSampler:
         print(f"对比可视化已保存至: {save_path}")
 
 # --- 使用示例 ---
-def process_video_pair(video_path, stride=50, num_samples=15):
+def process_video_pair(video_path, sample_interval, num_points):
     sampler = MotionSampler(device="cuda")
     
     # 读取视频
     reader = imageio.get_reader(video_path)
-    frames = [f for i, f in enumerate(reader) if i < stride + 1]
+    total_frames = reader.count_frames()
+    frames = [f for i, f in enumerate(reader) if i < total_frames]
     
     frame1 = frames[0]
-    frame_target = frames[stride] # 跨帧采样，效果更好
+    mag_sum = None
+
+    if sample_interval >= total_frames:
+        sample_interval = total_frames - 1 
     
-    # 1. 计算光流
-    flow, mag = sampler.get_flow_magnitude(frame1, frame_target)
+    for i in range(sample_interval, total_frames, sample_interval):
+        frame_target = frames[i] 
+        flow, mag = sampler.get_flow_magnitude(frame1, frame_target)
+        mag_sum = mag if mag_sum is None else mag_sum + mag
+        frame1 = frame_target  # 更新为下一次比较的基准帧
     
     # 2. 采样处理点 (Handle Points)
-    handle_points = sampler.sample_significant_points(mag, num_samples=num_samples)
+    dense_handle_points = sampler.sample_significant_points(mag_sum, num_samples=num_points, grid_size=8, threshold_quantile=0.95)  
+    sparse_handle_points = sampler.sample_significant_points(mag_sum, num_samples=num_points//2, grid_size=16, threshold_quantile=0.75) 
+    handle_points =  np.unique(np.concatenate([dense_handle_points, sparse_handle_points], axis=0), axis=0)  # 合并去重
     
     print(f"在视频中采样了 {len(handle_points)} 个显著运动点。")
-    sampler.visualize_comparison(frames[0], frames[stride], flow, mag, handle_points, save_path="pair_check.png")
+    # sampler.visualize_comparison(frames[0], frames[compare_frame], flow, mag, handle_points, save_path="pair_check.png")
     return handle_points
 
 # 假设你已经解压了视频
