@@ -1,2 +1,4 @@
 /v0
 /co-tracker/checkpoints
+/co-tracker/saved_videos
+labeled_data.jsonl

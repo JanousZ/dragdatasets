@@ -14,10 +14,13 @@ import cv2
 import subprocess
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from torchvision.models.optical_flow import raft_small, Raft_Small_Weights
+import imageio
 
 # --- 配置路径 ---
 CSV_PATH = "/mnt/disk1/datasets/drag_data/OpenVid-1M.csv"
-VIDEO_ROOT = "/mnt/disk1/datasets/drag_data" # 递归扫描的起点
+VIDEO_ROOT = "/mnt/disk1/datasets/drag_data/rawdata" # 递归扫描的起点
+SPLIT_ROOT = "/mnt/disk1/datasets/drag_data/selectdata" # 分割后视频的存放目录
 
 # 单个视频处理函数
 def process_single_video_crop(video_path):
@@ -38,6 +41,7 @@ def process_single_video_crop(video_path):
         return None  # 已经是 8 的倍数，跳过
     target_w = w - (w % 8)
     target_h = h - (h % 8)
+
     temp_output = video_str + ".temp_crop.mp4"
     crop_cmd = [
         'ffmpeg', '-y', '-i', video_str,
@@ -56,7 +60,6 @@ def process_single_video_crop(video_path):
         return f"处理失败: {video_str}"
 
 # 多线程版本
-
 def process_videos_crop(root_dir, num_workers=128):
     """
     递归查找 root_dir 下所有视频，检查宽高是否为 8 的倍数，
@@ -73,6 +76,53 @@ def process_videos_crop(root_dir, num_workers=128):
             res = f.result()
             if res:
                 print(res)
+
+def split_video_ffmpeg(video_path, output_dir, segment_time=5):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    # %03d 会自动生成 001, 002 这种编号
+    video_name = os.path.basename(video_path).split('.')[0]
+    output_pattern = os.path.join(output_dir, video_name + "_%03d.mp4")
+    
+    command = [
+        'ffmpeg',
+        '-i', video_path,
+        '-f', 'segment',
+        '-segment_time', str(segment_time),
+        '-reset_timestamps', '1',
+        '-c', 'copy',  # 直接拷贝编码，不重新编码，速度最快
+        output_pattern
+    ]
+    
+    try:
+        subprocess.run(
+            command, 
+            stdout=subprocess.DEVNULL, # 丢弃标准输出
+            stderr=subprocess.PIPE,    # 捕获错误输出，以备异常时打印
+            check=True,                # 若返回码非0则抛出异常
+            text=True
+        )
+        return f"分割完成: {video_path}"
+    except subprocess.CalledProcessError as e:
+        return f"分割失败: {video_path}, 错误: {str(e)}"
+
+def process_videos_split(root_dir, output_dir, num_workers=64):
+    """
+    递归查找 root_dir 下所有视频，检查宽高是否为 8 的倍数，
+    若不是则进行中心裁剪并覆盖原文件。多线程加速。
+    """
+    video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.flv', '.webm'}
+    all_files = list(Path(root_dir).rglob("*"))
+    video_files = [f for f in all_files if f.suffix.lower() in video_extensions and "selectdata" not in str(f)]
+    print(f"共发现 {len(video_files)} 个视频文件，开始检查...")
+    results = []
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = {executor.submit(split_video_ffmpeg, video_path, output_dir, segment_time=5): video_path for video_path in video_files}
+        for f in tqdm(as_completed(futures), total=len(futures), desc="裁剪视频长度(多线程)"):
+            res = f.result()
+            # if res:
+            #     print(res)
 
 def prepare_processing_static_list(csv_path, video_root):
     """
@@ -143,10 +193,13 @@ Please provide a comprehensive judgment based on the following four dimensions:
    - **Background Requirement**: The background should ideally remain static (Stationary) to ensure the motion is derived from the subject itself. 
    - **Exception**: If the "primary change" intentionally occurs in the background (e.g., landscape morphing, clouds moving), it is also acceptable.
 2. **Subject Category**:
-   - Must fall into the following hierarchy: [Human, Animal, Daily Items, Nature/Landscape, Others].
+   - Must fall into the following hierarchy: [Human, Animal, Daily Items, Others].
    - Provide a specific detailed description (e.g., "A man wearing a heavy coat," "A rotating ceramic cup").
 3. **Motion Taxonomy**:
-   - Identify the dynamic attributes of the video. Select the most one appropriate category: [Translation (Position Change), Pose Change, Deformation, Rotation, Scaling, Boundary Expansion, Camera movement, Others].
+   - Identify the dynamic attributes of the video. 
+   - For human, Select the most one appropriate category:[Pose Change, Ficial expression changes, Orientation change, Others]
+   - For animals, Select the most one appropriate category: [Pose Change, Orientation change, Others]
+   - For daily items, Select the most one appropriate category: [Translation, Deformation, Rotation, Scaling, Boundary Expansion, Others]
 4. **Point-based Drag Feasibility**:
    - Core Judgment: Can this motion be effectively represented by the displacement of a "Set of Start Points -> Set of Target Points"?
    - Scoring: 1-10 (A score of 7 or above indicates high-quality data).
@@ -284,16 +337,54 @@ def _merge_to_main(temp_file, main_file):
             shutil.copyfileobj(src, dest)
     os.remove(temp_file)
 
-# process_videos_crop(VIDEO_ROOT) # 先处理视频裁剪，确保后续分析的视频尺寸符合要求
+def motionscore_videofilter(video_path, min_motion_score=2.0, sample_interval=5, device="cuda"):
+    """
+    用RAFT自动计算视频主运动强度，筛选运动显著的视频。
+    - min_motion_score: 运动强度阈值，低于此值的视频将被过滤掉
+    - sample_interval: 每隔多少帧采样一次
+    """
+    # 加载RAFT
+    weights = Raft_Small_Weights.DEFAULT
+    model = raft_small(weights=weights).to(device).eval()
+    transforms = weights.transforms()
+    
+    reader = imageio.get_reader(video_path)
+    frames = []
+    for i, frame in enumerate(reader):
+        if i % sample_interval == 0:
+            frames.append(frame)
+    if len(frames) < 2:
+        return False, 0.0  # 帧数太少
+    
+    total_motion = 0.0
+    count = 0
+    with torch.no_grad():
+        for i in range(len(frames) - 1):
+            img1 = torch.from_numpy(frames[i]).permute(2, 0, 1).to(device)
+            img2 = torch.from_numpy(frames[i+1]).permute(2, 0, 1).to(device)
+            img1, img2 = transforms(img1, img2)
+            flow = model(img1.unsqueeze(0), img2.unsqueeze(0))[-1][0]
+            mag = torch.norm(flow, dim=0).mean().item()
+            total_motion += mag
+            count += 1
+    avg_motion = total_motion / count if count > 0 else 0.0
+    return avg_motion >= min_motion_score, avg_motion
 
-matched_df = prepare_processing_static_list(CSV_PATH, VIDEO_ROOT)
+# 先处理视频裁剪，确保后续分析的视频尺寸符合要求
+# process_videos_crop(VIDEO_ROOT) 
+
+# 时间裁剪，5s一段
+# process_videos_split(VIDEO_ROOT, SPLIT_ROOT)
+
+# OpenVid-1M csv静态镜头筛选
+# matched_df = prepare_processing_static_list(CSV_PATH, VIDEO_ROOT)
 
 # 预览结果
-if not matched_df.empty:
-    print("\n[预览待分析数据]:")
-    print(matched_df[['video', 'caption']].head())
-else:
-    print("未找到符合 static 筛选条件的视频，请检查 CSV 列名或内容。")
+# if not matched_df.empty:
+#     print("\n[预览待分析数据]:")
+#     print(matched_df[['video', 'caption']].head())
+# else:
+#     print("未找到符合 static 筛选条件的视频，请检查 CSV 列名或内容。")
 
-# test_df = matched_df.head(9) # 取前 9 条进行测试
+# 进行类别打标，用于后续类别筛选
 # run_multigpu_labeling(test_df)
