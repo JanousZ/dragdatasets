@@ -19,8 +19,8 @@ import imageio
 
 # --- 配置路径 ---
 CSV_PATH = "/mnt/disk1/datasets/drag_data/OpenVid-1M.csv"
-VIDEO_ROOT = "/mnt/disk1/datasets/drag_data/rawdata" # 递归扫描的起点
-SPLIT_ROOT = "/mnt/disk1/datasets/drag_data/selectdata" # 分割后视频的存放目录
+VIDEO_ROOT = "/mnt/disk1/datasets/drag_data/rawvideo" # 递归扫描的起点
+SPLIT_ROOT = "/mnt/disk1/datasets/drag_data/selectvideo" # 分割后视频的存放目录
 
 # 单个视频处理函数
 def process_single_video_crop(video_path):
@@ -78,8 +78,6 @@ def process_videos_crop(root_dir, num_workers=128):
                 print(res)
 
 def split_video_ffmpeg(video_path, output_dir, segment_time=5):
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
     
     # %03d 会自动生成 001, 002 这种编号
     video_name = os.path.basename(video_path).split('.')[0]
@@ -90,8 +88,12 @@ def split_video_ffmpeg(video_path, output_dir, segment_time=5):
         '-i', video_path,
         '-f', 'segment',
         '-segment_time', str(segment_time),
+        '-segment_format', 'mp4',        # 明确指定切片容器格式
         '-reset_timestamps', '1',
-        '-c', 'copy',  # 直接拷贝编码，不重新编码，速度最快
+        '-c:v', 'libx264',    # 重新编码视频
+        '-c:a', 'aac',        # 重新编码音频
+        '-sc_threshold', '0',            # 关键：禁用场景切换检测，防止它在不该切的地方乱加 I 帧
+        '-force_key_frames', f'expr:gte(t,n_forced*{segment_time})', # 强制每 segment_time 产生关键帧
         output_pattern
     ]
     
@@ -373,8 +375,8 @@ def motionscore_videofilter(video_path, min_motion_score=2.0, sample_interval=5,
 # 先处理视频裁剪，确保后续分析的视频尺寸符合要求
 # process_videos_crop(VIDEO_ROOT) 
 
-# 时间裁剪，5s一段
-# process_videos_split(VIDEO_ROOT, SPLIT_ROOT)
+#时间裁剪，5s一段
+process_videos_split(VIDEO_ROOT, SPLIT_ROOT)
 
 # OpenVid-1M csv静态镜头筛选
 # matched_df = prepare_processing_static_list(CSV_PATH, VIDEO_ROOT)
