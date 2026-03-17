@@ -283,13 +283,34 @@ def save_annotated_frames(video_tensor, pred_tracks, pred_visibility, pair, stri
     """
     辅助函数：负责具体的绘制和写入磁盘操作
     """
+    import colorsys
+    def get_vibrant_colors(n):
+        colors = []
+        for i in range(n):
+            # 在色相环上均匀分布 (0.0 到 1.0)
+            hue = i / n
+            # 固定高饱和度和高亮度，确保颜色极其鲜艳
+            saturation = 0.9 
+            brightness = 1.0
+            
+            # HSV 转 RGB (范围 0-1)
+            rgb = colorsys.hsv_to_rgb(hue, saturation, brightness)
+            # 转为 OpenCV 使用的 0-255 tuple
+            colors.append(tuple(int(c * 255) for c in rgb))
+            
+        # 打乱颜色顺序，防止相邻的追踪点颜色太接近
+        np.random.seed(42)
+        np.random.shuffle(colors)
+        return colors
+
     t1, t2 = pair
     N = pred_tracks.shape[2]
     os.makedirs(save_dir, exist_ok=True)
     
     # 生成固定颜色种子，确保 t1 和 t2 的同一点颜色一致
     np.random.seed(42)
-    colors = [tuple(map(int, np.random.randint(0, 255, 3).tolist())) for _ in range(N)]
+    colors = get_vibrant_colors(N)
+    # colors = [tuple(map(int, np.random.randint(0, 255, 3).tolist())) for _ in range(N)]
 
     for t_idx in [t1, t2]:
         # Tensor -> BGR Numpy
