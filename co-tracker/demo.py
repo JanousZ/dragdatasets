@@ -90,6 +90,10 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
         feat_coords = significant_points / torch.max(significant_points) * 0.5 # 归一化位置
         features = torch.cat([feat_coords, motion_directions * alpha], dim=1) # [M, 4]
 
+        norm_displacement = (displacement[significant_motion_mask] - displacement[significant_motion_mask].min()) / (displacement[significant_motion_mask].max() - displacement[significant_motion_mask].min() + 1e-6)
+        beta = 1.2  # 调节因子：1.0是线性，>1.0 极其偏爱大位移
+        score = norm_displacement ** beta
+
         # --- 步骤 C: 最远点采样 (FPS) ---
         selected_indices = []
         # 初始点选择位移最大的点，确保选到一个显著运动的点
@@ -104,7 +108,7 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
             current_feat = features[current_idx]
             dists = torch.norm(features - current_feat, dim=1)
             min_distances = torch.min(min_distances, dists)
-            weighted_dists = min_distances
+            weighted_dists = min_distances * score
             
             # 选出距离当前点集最远的点
             current_idx = torch.argmax(weighted_dists)
@@ -181,11 +185,13 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
     
     # 1. 计算每个点的总位移
     displacement = calculate_total_displacement(pred_tracks, mode='path_length')   #[N]
+    final_displacement = calculate_total_displacement(pred_tracks, mode='net_distance')   #[N]
     # 2. 过滤掉视频边界外的点
     if video_width is not None and video_height is not None:
         out_of_bounds_mask = filter_out_of_video(pred_tracks, video_width, video_height)
         displacement[out_of_bounds_mask] = 0  
-    
+        final_displacement[out_of_bounds_mask] = 0
+
     # 过滤掉位移短的点，保留位移较大的点
     avg_motion = displacement.mean()
     std_motion = displacement.std()
@@ -193,7 +199,9 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
         motion_threshold = avg_motion + 0.5 * std_motion
     else:
         motion_threshold = avg_motion
-    significant_motion_mask = (displacement > motion_threshold)
+    
+    final_motion_threshold = final_displacement.mean() * 0.5  
+    significant_motion_mask = (displacement > motion_threshold) & (final_displacement > final_motion_threshold)
     significant_points = pred_tracks[0, 0, significant_motion_mask]
 
     if num_samples is None:
@@ -375,8 +383,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--video_json",
-        #default="/home/yanzhang/dragdatasets/labeled_data.jsonl",
-        default=None,
+        default="/home/yanzhang/dragdatasets/points_annotation_test.jsonl",
+        # default=None,
         help="video paths",
     )
     parser.add_argument(
@@ -468,14 +476,15 @@ if __name__ == "__main__":
     for i,video_path in enumerate(video_paths):
     # load the input video frame by frame
 
-        # if "magictime" not in video_path:
+        np.random.seed(int(time.time()) + i)  # 每个视频使用不同的随机种子，确保结果多样但可复现
+        #random_index = np.random.randint(0, len(video_paths))
+        random_index = i
+        # if "pixabay" not in video_paths[random_index]:
         #     continue
-
-        np.random.seed(int(time.time()))  # 每个视频使用不同的随机种子，确保结果多样但可复现
-        random_index = np.random.randint(0, len(video_paths))
         video = read_video_from_path(video_paths[random_index])
         video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].float()
-        # video = torch.flip(video, dims=[1])
+
+        flipped_video = torch.flip(video, dims=[1]).to(DEFAULT_DEVICE)
         #segm_mask = np.array(Image.open(os.path.join(args.mask_path)))
         #segm_mask = torch.from_numpy(segm_mask)[None, None]
 
@@ -532,5 +541,52 @@ if __name__ == "__main__":
 
         selected_frames = sample_frames(video, video_names[random_index], pred_tracks, pred_visibility, strides=[15, 60, video.shape[1]-1])
         # get_adaptive_stride_pair(pred_tracks, video_dims=(video.shape[-1], video.shape[-2]), video_name=video_names[random_index], target_shift=0.10)
-        if i>10:
-            break
+
+        # 将视频进行反转播放，再跑一次
+        video_name = video_names[random_index]
+        video_name = video_name + "_flip"
+        video = video.flip(dims=[1])
+        pred_tracks, pred_visibility = model(
+            video,
+            grid_size=args.grid_size,
+            grid_query_frame=args.grid_query_frame,
+            backward_tracking=args.backward_tracking,
+            # segm_mask=segm_mask
+        )
+        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        # vis.visualize(
+        #     video,
+        #     pred_tracks,
+        #     pred_visibility,
+        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
+        #     filename=f"{video_name}_grid",
+        # )
+
+        points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], grid_size=args.grid_size)
+        frame_idx = 0
+        queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
+        pred_tracks, pred_visibility = model(video, queries=queries)
+        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        vis.visualize(
+            video,
+            pred_tracks,
+            pred_visibility,
+            query_frame=0 if args.backward_tracking else args.grid_query_frame,
+            filename=f"{video_name}_1st_sample",
+        )
+
+        points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], num_samples=10, grid_size=args.grid_size)
+        frame_idx = 0
+        queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
+        pred_tracks, pred_visibility = model(video, queries=queries)
+        
+        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        vis.visualize(
+            video,
+            pred_tracks,
+            pred_visibility,
+            query_frame=0 if args.backward_tracking else args.grid_query_frame,
+            filename=f"{video_name}",
+        )
+
+        selected_frames = sample_frames(video, video_name, pred_tracks, pred_visibility, strides=[15, 60, video.shape[1]-1])
