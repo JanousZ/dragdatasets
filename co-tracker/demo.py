@@ -174,6 +174,9 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
                 refined_samples.append(pt.unsqueeze(0) + offsets)
                 
         # 合并结果
+        if len(refined_samples) == 0:
+            return significant_points
+        
         new_sampled_points = torch.cat(refined_samples, dim=0)
         
         # 后处理：去重、裁剪边界
@@ -204,6 +207,9 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
     significant_motion_mask = (displacement > motion_threshold) & (final_displacement > final_motion_threshold)
     significant_points = pred_tracks[0, 0, significant_motion_mask]
 
+    if significant_points is None or significant_points.shape[0] == 0:
+        significant_points = torch.tensor([[0,0]]) # 如果没有任何点满足条件，至少返回一个点，避免后续代码崩溃
+
     if num_samples is None:
         # 进行点扩展
         unique_points = refine_points_with_corners(significant_points, video[0, 0], radius_x=video_width//grid_size, radius_y=video_height//grid_size, k=2)
@@ -219,6 +225,8 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
         #     indices = torch.randperm(significant_points.shape[0])[:num_samples]
         #     significant_points = significant_points[indices]
         significant_points = sample_diverse_points(significant_points, significant_motion_mask, displacement, pred_tracks, num_samples)
+        if len(significant_points) == 0:
+            significant_points[0] = [256, 256]
         return significant_points
 
 def sample_frames(video, video_name, pred_tracks, pred_visibility, strides=[15, 60]):
@@ -404,13 +412,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--video_json",
-        default="/home/yanzhang/dragdatasets/points_annotation_test.jsonl",
-        # default=None,
+        # default="/home/yanzhang/dragdatasets/tracked_videos.jsonl",
+        default=None,
         help="video paths",
     )
     parser.add_argument(
         "--video_dir",
-        default="/mnt/disk1/datasets/drag_data/selectvideo",
+        default="/mnt/disk1/datasets/drag_data/rawvideo/RGBDobject",
         type=str,
     )
     parser.add_argument(
@@ -497,17 +505,34 @@ if __name__ == "__main__":
     for i,video_path in enumerate(video_paths):
     # load the input video frame by frame
 
-        np.random.seed(int(time.time()) + i)  # 每个视频使用不同的随机种子，确保结果多样但可复现
+        # np.random.seed(int(time.time()) + i)  # 每个视频使用不同的随机种子，确保结果多样但可复现
         #random_index = np.random.randint(0, len(video_paths))
         random_index = i
         # if "pixabay" not in video_paths[random_index]:
         #     continue
+        video_name = video_names[random_index]
+        # 假设在文件夹下已经有了video_name的子文件夹，跳过处理
+        if os.path.exists(os.path.join("/mnt/disk1/datasets/drag_data/selectframe", video_name)):
+            print(f"Skipping {video_name} as it already exists.")
+            continue
+
         video = read_video_from_path(video_paths[random_index])
         video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].float()
-
-        flipped_video = torch.flip(video, dims=[1]).to(DEFAULT_DEVICE)
         #segm_mask = np.array(Image.open(os.path.join(args.mask_path)))
         #segm_mask = torch.from_numpy(segm_mask)[None, None]
+
+        # RGBDobject dataset专属mask
+        if "RGBDobject" in args.video_dir:
+            instance, vid = video_name.split("_track")
+            category, _  = instance.rsplit("_", 1)
+
+            segm_mask_path = f"/mnt/disk1/datasets/rgbd-dataset/{category}/{instance}/{instance}_{vid}_1_mask.png"
+            if os.path.exists(os.path.join(segm_mask_path)):
+                segm_mask = np.array(Image.open(os.path.join(segm_mask_path)).convert('L'))
+                segm_mask = torch.from_numpy(segm_mask)[None,None]
+            else:
+                segm_mask = None
+
 
         video = video.to(DEFAULT_DEVICE)
 
@@ -519,10 +544,10 @@ if __name__ == "__main__":
 
         pred_tracks, pred_visibility = model(
             video,
-            grid_size=args.grid_size,
+            grid_size=args.grid_size * 5,
             grid_query_frame=args.grid_query_frame,
             backward_tracking=args.backward_tracking,
-            # segm_mask=segm_mask
+            segm_mask=segm_mask
         )
         # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
         # vis.visualize(
@@ -536,29 +561,29 @@ if __name__ == "__main__":
         points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], grid_size=args.grid_size)
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
-        pred_tracks, pred_visibility = model(video, queries=queries)
-        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
-        vis.visualize(
-            video,
-            pred_tracks,
-            pred_visibility,
-            query_frame=0 if args.backward_tracking else args.grid_query_frame,
-            filename=f"{video_names[random_index]}_1st_sample",
-        )
+        pred_tracks, pred_visibility = model(video, queries=queries, segm_mask = segm_mask)
+        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        # vis.visualize(
+        #     video,
+        #     pred_tracks,
+        #     pred_visibility,
+        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
+        #     filename=f"{video_names[random_index]}_1st_sample",
+        # )
 
-        points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], num_samples=10, grid_size=args.grid_size)
+        points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], num_samples=8, grid_size=args.grid_size)
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
         pred_tracks, pred_visibility = model(video, queries=queries)
         
-        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
-        vis.visualize(
-            video,
-            pred_tracks,
-            pred_visibility,
-            query_frame=0 if args.backward_tracking else args.grid_query_frame,
-            filename=f"{video_names[random_index]}",
-        )
+        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        # vis.visualize(
+        #     video,
+        #     pred_tracks,
+        #     pred_visibility,
+        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
+        #     filename=f"{video_names[random_index]}",
+        # )
 
         selected_frames = sample_frames(video, video_names[random_index], pred_tracks, pred_visibility, strides=[15, 60, video.shape[1]-1])
         # get_adaptive_stride_pair(pred_tracks, video_dims=(video.shape[-1], video.shape[-2]), video_name=video_names[random_index], target_shift=0.10)
@@ -587,27 +612,32 @@ if __name__ == "__main__":
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
         pred_tracks, pred_visibility = model(video, queries=queries)
-        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
-        vis.visualize(
-            video,
-            pred_tracks,
-            pred_visibility,
-            query_frame=0 if args.backward_tracking else args.grid_query_frame,
-            filename=f"{video_name}_1st_sample",
-        )
+        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        # vis.visualize(
+        #     video,
+        #     pred_tracks,
+        #     pred_visibility,
+        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
+        #     filename=f"{video_name}_1st_sample",
+        # )
 
         points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], num_samples=10, grid_size=args.grid_size)
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
         pred_tracks, pred_visibility = model(video, queries=queries)
         
-        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
-        vis.visualize(
-            video,
-            pred_tracks,
-            pred_visibility,
-            query_frame=0 if args.backward_tracking else args.grid_query_frame,
-            filename=f"{video_name}",
-        )
+        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
+        # vis.visualize(
+        #     video,
+        #     pred_tracks,
+        #     pred_visibility,
+        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
+        #     filename=f"{video_name}",
+        # )
 
         selected_frames = sample_frames(video, video_name, pred_tracks, pred_visibility, strides=[15, 60, video.shape[1]-1])
+
+        del video, pred_tracks, pred_visibility, queries
+        torch.cuda.empty_cache()
+
+
