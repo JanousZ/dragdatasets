@@ -1,0 +1,93 @@
+{
+    "human": {
+        "orientation": [
+            "person head rotation", 
+            "man woman looking around portrait"
+        ],
+        "expression": [
+            "smiling teeth close up portrait",  
+            "human yawning mouth open",        
+            "human eyes blinking macro",       
+            "frowning eyebrows close up",      
+            "surprised face human portrait"     
+        ],
+        "pose": [
+            "man yoga stretching",
+            "person bending torso movement",
+            "person dancing",
+            "person walking",
+            "person bending waist",
+            "person lifting leg",
+            "person torso twist",
+            "person doing squats"
+        ],
+        "fingers": [
+            "hand fingers counting close up",
+            "fist clenching and opening",
+            "hand gestures movement"
+        ]
+    },
+    "animal": {
+        "orientation": {
+            "cat": ["cat head turn rotation"],
+            "dog": ["dog head turn rotation"],
+            "bird": ["bird head turning close up"]
+        },
+        "face": {
+            "cat": ["cat yawning macro", "cat licking face close up"],
+            "dog": ["dog panting tongue out", "dog barking close up"],
+            "lion": ["lion yawning"]
+        },
+        "pose": {
+            "butterfly": ["butterfly wings flapping macro"],
+            "fish": ["fish tail waving swimming"],
+            "horse": ["horse galloping sideways"],
+            "bird": ["bird stretching wings slow motion"],
+            "elephant": ["elephant trunk movement", "elephant walking"],
+            "kangaroo": ["kangaroo hopping"]
+        }
+    },
+    "plant": {
+        "grow": {
+            "plant": ["growth timelapse"]
+        },
+        "bloom": {
+            "rose": ["rose flower blooming macro"],
+            "lily": ["lily opening timelapse"]
+        },
+        "swing": {
+            "tree": ["tree branches swaying in wind"],
+            "grass": ["tall grass blowing in breeze"]
+        }
+    },
+    "daily_object": {
+        "translation": {
+            "train": ["toy train moving on track"],
+            "car": ["car sliding slowly sideways"],
+            "drawer": ["sliding drawer opening close up"]
+        },
+        "rotation": {
+            "toy": ["spinning top rotation"],
+            "product": ["rotating watch on turntable"],
+            "fan": ["electric fan blades turning"]
+        },
+        "scaling": {
+            "balloon": ["inflating balloon slow motion"],
+            "umbrella": ["opening umbrella close up"]
+        },
+        "deformation": {
+            "soft": ["squeezing sponge", "stretching rubber band"],
+            "plastic": ["bending plastic bottle", "crushing soda can"]
+        },
+        "openclose": {
+            "book": ["flipping book pages"],
+            "laptop": ["closing laptop lid"],
+            "box": ["opening gift box lid"]
+        },
+        "flip": {
+            "coin": ["flipping a coin in air"],
+            "pancake": ["flipping pancake in pan"],
+            "card": ["turning over a playing card"]
+        }
+    }
+}
