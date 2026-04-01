@@ -15,7 +15,6 @@ import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 from PIL import Image, ImageDraw
 
-
 def read_video_from_path(path):
     try:
         reader = imageio.get_reader(path)

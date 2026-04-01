@@ -1,63 +1,3 @@
-## 下载视频数据集
-```bash
-hf download nkp37/OpenVid-1M \
---repo-type dataset \
---include OpenVid_part0.zip \
---local-dir ./
-```
-
-一些视频数据集及其特点：
-1.OpenVid-1M，数据量很大。但是关于镜头运动类别标注不算很准确，另外很多是自然风景类别的视频，不太符合需求，或者说符合需求的极少，筛选很麻烦。
-
-```bash
-wget -c --tries=0 --read-timeout=20 --waitretry=5 https://huggingface.co/datasets/nkp37/OpenVid-1M/resolve/main/OpenVid_part0.zip
-unzip -j OpenVid_part0.zip -d video_folder
-```
-
-## 视频筛选原则
-### 方案一
-OpenVid-1M的数据集还是太杂太乱，需要进行处理。
-1.静态视角，结合csv文件筛选。
-初筛后仍有一部分实际上不是完全的静态视角。
-(未尝试)后续可尝试方法：使用qwen2.5-vl-7b-cam-motion进行进一步筛选。
-
-2.主要变化发生在单一主体
-3.视频变化能归类到操作类型的任意一类
-分类原则：
-1.对主体进行分类（人、动物、日常生活用品、其他）
-2.对操作类型进行分类（平移、缩放、姿态、形变、旋转、其他）
-暂时尝试方法：使用qwen2.5-lv-7b-instruct模型进行筛选。
-保留人、动物、日常生活用品的视频，去除风景类视频。
-去除非单主体视频。
-
-drag大致可以分为：整体移动、面向偏转；旋转；开闭扩张收缩等形变；
-
-### 方案二
-分门别类寻找对应的数据集，例如包含人物姿态变化、表情变化、面向变化的视频数据集，动物姿态变化的视频数据集、物品平移、缩放、形变、旋转的视频数据集。
-
-视频筛选后需要对其
-1.进行长宽裁剪，使其都为8的倍数。
-1.进行时间长度裁剪，裁成5s一段。
-
-## 视频点集配对标注
-```bash
-cd co-tracker
-python demo.py --offline
-```
-
-1.如何确定视频点集追踪点？
-Q1:如何确定跟踪点的个数？
-暂时固定为10个点。
-
-Q2:如何确定跟踪点的位置？
-先用grid采样，然后根据所有点的运动均值和方差确定阈值，进行第一波筛选；
-然后对筛选出来的点进行radius内随机扩展，变为附近的多个点，继续进行第二波筛选；
-第二波筛选兼顾点的位移（大于第二波内的位移均值），点的运动方向以及点之间的物理距离。
-
-2.如何确定哪些帧抽出来进行训练？
-Q1：在确定跟踪点的基础上，我们固定了stride=15,60，对于任意满足时间差为stride的两帧，我们只选择跟踪点总位移最大的一对。
-也尝试过自适应抽帧，发现即使抽到40或80的stride，视觉差距跟60不大，即15,60，以及视频长度的stride足够进行较好的覆盖。
-
 ## 从现在的数据集构建中发现问题
 Q1：分布不均
 超八成是人脸移动的分布，这种分布体现的是移动的一致性，但是对于其余非平移拖拽则是OOD的。
@@ -121,4 +61,71 @@ A2.2：专门数据集筛选：
 静态镜头（背景不变化、不移动）
 运动/变化主体单一（避免drag标注不全，导致推理时的耦合编辑）
 
+A2.3: 网络爬虫：
+
 无论是哪种来源，必须对每个视频都进行主体及动作形式（变化形式）的标注，以便于分布统计
+
+## 自动化pipeline
+1.获取原始视频
+
+2.视频进行裁剪，长宽为8的倍数，并删除长或宽小于500的视频，切分为20帧或60帧的片段 
+```bash
+cd dragdatasets
+python crop_and_split.py --root_dir ./A1_Dataset/animal/face
+```
+
+3.视频进行基于raft的运动分数初筛,每个视频最终保留6个切分片段
+root_dir命名规范：总数据集/rawvideo/子数据集
+output_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
+```bash
+cd dragdatasets
+python motionscore_filter.py --root_dir ./A1_Dataset/animal/face --gpu_ids 1 2 --output_jsonl ./animal_face.jsonl
+```
+
+4.使用co-track进行点标注
+output_root_dir命名规范：总数据集/selectframes/子数据集
+video_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
+```bash
+cd dragdatasets/co-tracker
+python demo.py --offline --backward_tracking --gpu_id 1 --output_root_dir ./A1_selectframes --video_jsonl ../animal_face.jsonl --dataset_dir /home/yanzhang/dragdatasets
+```
+
+5.人工挑选合适的pair
+root_dir命名规范：总数据集/selectframes/子数据集
+output_jsonl命名规范：总数据集/train_json/子数据集_pairs.jsonl
+```bash
+cd dragdatasets
+python manual_select.py --root_dir ./co-tracker/A1_selectframes --output_jsonl ./A1_pairs.jsonl
+```
+
+## 视频点集配对标注
+1.如何确定视频点集追踪点？
+Q1:如何确定跟踪点的个数？
+暂时固定为10个点。
+
+Q2:如何确定跟踪点的位置？
+先用grid采样，然后根据所有点的运动均值和方差确定阈值，进行第一波筛选；
+然后对筛选出来的点进行radius内随机扩展，变为附近的多个点，继续进行第二波筛选；
+第二波筛选兼顾点的位移（大于第二波内的位移均值），点的运动方向以及点之间的物理距离。
+
+2.如何确定哪些帧抽出来进行训练？
+Q1：在确定跟踪点的基础上，我们固定了stride=15,60，对于任意满足时间差为stride的两帧，我们只选择跟踪点总位移最大的一对。
+也尝试过自适应抽帧，发现即使抽到40或80的stride，视觉差距跟60不大，即15,60，以及视频长度的stride足够进行较好的覆盖。
+
+## 下载视频数据集
+
+### OpenVid-1M
+```bash
+hf download nkp37/OpenVid-1M \
+--repo-type dataset \
+--include OpenVid_part0.zip \
+--local-dir ./
+```
+
+一些视频数据集及其特点：
+1.OpenVid-1M，数据量很大。但是关于镜头运动类别标注不算很准确，另外很多是自然风景类别的视频，不太符合需求，或者说符合需求的极少，筛选很麻烦。
+
+```bash
+wget -c --tries=0 --read-timeout=20 --waitretry=5 https://huggingface.co/datasets/nkp37/OpenVid-1M/resolve/main/OpenVid_part0.zip
+unzip -j OpenVid_part0.zip -d video_folder
+```

@@ -15,10 +15,6 @@ from cotracker.utils.visualizer import Visualizer, read_video_from_path
 from cotracker.predictor import CoTrackerPredictor
 import time
 
-DEFAULT_DEVICE = (
-    "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-)
-
 # if DEFAULT_DEVICE == "mps":
 #     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
@@ -91,7 +87,7 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
         features = torch.cat([feat_coords, motion_directions * alpha], dim=1) # [M, 4]
 
         norm_displacement = (displacement[significant_motion_mask] - displacement[significant_motion_mask].min()) / (displacement[significant_motion_mask].max() - displacement[significant_motion_mask].min() + 1e-6)
-        beta = 1.2  # 调节因子：1.0是线性，>1.0 极其偏爱大位移
+        beta = 1.0  # 调节因子：1.0是线性，>1.0 极其偏爱大位移
         score = norm_displacement ** beta
 
         # --- 步骤 C: 最远点采样 (FPS) ---
@@ -229,7 +225,7 @@ def sample_track_points(video, pred_tracks, pred_visibility, video_width=None, v
             significant_points[0] = [256, 256]
         return significant_points
 
-def sample_frames(video, video_name, pred_tracks, pred_visibility, strides=[15, 60]):
+def sample_frames(output_root_dir, video, video_name, pred_tracks, pred_visibility, strides=[15, 60]):
     """
     在整个序列中，为每个指定的 stride 挑选一个最优的帧对 (t1, t2)。
     
@@ -283,7 +279,7 @@ def sample_frames(video, video_name, pred_tracks, pred_visibility, strides=[15, 
         # 将该 stride 下表现最好的一对存入结果
         selected_pairs[delta_t] = best_pair
         if best_pair is not None:
-            save_annotated_frames(video, pred_tracks, pred_visibility, best_pair, delta_t, save_dir=os.path.join("/mnt/disk1/datasets/drag_data/selectframe", video_name))
+            save_annotated_frames(video, pred_tracks, pred_visibility, best_pair, delta_t, save_dir=os.path.join(output_root_dir, video_name))
 
     return selected_pairs
 
@@ -348,61 +344,6 @@ def save_annotated_frames(video_tensor, pred_tracks, pred_visibility, pair, stri
         cv2.imwrite(file_path, frame)
         print(f"Saved: {file_path}")
 
-def get_adaptive_stride_pair(pred_tracks, video_dims, video_name, target_shift=0.10, min_s=5, max_s=100):
-    """
-    pred_tracks: [1, T, N, 2] Co-Tracker 的预测轨迹
-    video_dims: (W, H)
-    target_shift: 期望的平均位移比例 (0.10 代表 10% 的屏幕尺寸)
-    """
-    W, H = video_dims
-    diag = np.sqrt(W**2 + H**2)
-    T = pred_tracks.shape[1]
-    N = pred_tracks.shape[2]
-    
-    # 1. 计算所有可能的帧对之间的平均位移
-    # 为了效率，我们可以遍历起始帧 t，尝试不同的 stride
-    best_score = -1e10
-    best_pair = (0, min(T-1, 30)) # 默认保底
-    
-    # 2. 这里的搜索可以优化：
-    # 我们希望找到一对帧 (t1, t2)，使得：
-    # (a) 平均位移接近 target_shift * diag
-    # (b) 所有点都在画面内 (Visibility)
-    # (c) 轨迹尽可能直 (运动效率高)
-    
-    # 采样一部分起始帧进行快速搜索
-    for t1 in range(0, T - min_s, 5): 
-        for s in [15, 30, 45, 60, 80]: # 候选 Stride
-            t2 = t1 + s
-            if t2 >= T: break
-            
-            # 计算这一对帧的 N 个点的位移
-            pts1 = pred_tracks[0, t1] # [N, 2]
-            pts2 = pred_tracks[0, t2] # [N, 2]
-            dist = torch.norm(pts2 - pts1, dim=-1) # [N]
-            avg_dist = dist.mean().item()
-            
-            # 量化得分：
-            # 1. 位移得分 (接近目标值最高)
-            shift_ratio = avg_dist / diag
-            dist_score = 1.0 - abs(shift_ratio - target_shift) / target_shift
-            
-            # 2. 边界保护 (如果有任何点跑出屏幕，大幅扣分)
-            out_of_bounds = (pts2[:, 0] < 0) | (pts2[:, 0] >= W) | \
-                            (pts2[:, 1] < 0) | (pts2[:, 1] >= H)
-            visibility_score = 1.0 if not out_of_bounds.any() else 0.0
-            
-            # 总分
-            current_score = dist_score * visibility_score
-            
-            if current_score > best_score:
-                best_score = current_score
-                best_pair = (t1, t2)
-    
-    save_annotated_frames(video, pred_tracks, pred_visibility, best_pair, best_pair[1]-best_pair[0], save_dir=os.path.join("/mnt/disk1/datasets/drag_data/selectframe", video_name))
-                
-    return best_pair # 返回找到的最佳 (start_frame, end_frame)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -411,15 +352,9 @@ if __name__ == "__main__":
         help="path to a video",
     )
     parser.add_argument(
-        "--video_json",
-        # default="/home/yanzhang/dragdatasets/tracked_videos.jsonl",
+        "--video_jsonl",
         default=None,
         help="video paths",
-    )
-    parser.add_argument(
-        "--video_dir",
-        default="/mnt/disk1/datasets/drag_data/rawvideo/RGBDobject",
-        type=str,
     )
     parser.add_argument(
         "--mask_path",
@@ -453,6 +388,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Pass it if you would like to use the offline model, in case of online don't pass it",
     )
+    parser.add_argument(
+        "--output_root_dir",
+        required=True,
+        type=str
+    )
+    parser.add_argument(
+        "--gpu_id",
+        required=True,
+        type=str
+    )
+    parser.add_argument(
+        "--dataset_dir",
+        type=str,
+        default=""
+    )
 
     args = parser.parse_args()
 
@@ -473,14 +423,15 @@ if __name__ == "__main__":
     else:
         model = torch.hub.load("facebookresearch/co-tracker", "cotracker3_offline")
     
+    DEFAULT_DEVICE = f"cuda:{args.gpu_id}"
     model = model.to(DEFAULT_DEVICE)
 
     # load json
-    if args.video_json is not None:
+    if args.video_jsonl is not None:
         video_paths = []
         video_names = []
 
-        with open(args.video_json, "r", encoding='utf-8') as f:
+        with open(args.video_jsonl, "r", encoding='utf-8') as f:
             for line in f:
                 # 去掉行尾空格和换行符，并解析
                 line = line.strip()
@@ -489,15 +440,8 @@ if __name__ == "__main__":
                 data = json.loads(line)
                 
                 # 提取字段
-                video_paths.append(data["full_path"])
-                video_names.append(data["video"])
-    elif args.video_dir is not None:
-        video_paths = []
-        video_names = []
-        for filename in os.listdir(args.video_dir):
-            if filename.endswith(".mp4") or filename.endswith(".avi"):
-                video_paths.append(os.path.join(args.video_dir, filename))
-                video_names.append(filename.split(".")[0])
+                video_paths.append(os.path.join(args.dataset_dir, data["video_path"]))
+                video_names.append(data["video_path"].split("/")[-1].split(".")[0])
     else:
         video_paths = [args.video_path]
         video_names = [args.video_path.split("/")[-1].split(".")[0]]
@@ -512,7 +456,7 @@ if __name__ == "__main__":
         #     continue
         video_name = video_names[random_index]
         # 假设在文件夹下已经有了video_name的子文件夹，跳过处理
-        if os.path.exists(os.path.join("/mnt/disk1/datasets/drag_data/selectframe", video_name)):
+        if os.path.exists(os.path.join(args.output_root_dir, video_name)):
             print(f"Skipping {video_name} as it already exists.")
             continue
 
@@ -520,19 +464,6 @@ if __name__ == "__main__":
         video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].float()
         #segm_mask = np.array(Image.open(os.path.join(args.mask_path)))
         #segm_mask = torch.from_numpy(segm_mask)[None, None]
-
-        # RGBDobject dataset专属mask
-        if "RGBDobject" in args.video_dir:
-            instance, vid = video_name.split("_track")
-            category, _  = instance.rsplit("_", 1)
-
-            segm_mask_path = f"/mnt/disk1/datasets/rgbd-dataset/{category}/{instance}/{instance}_{vid}_1_mask.png"
-            if os.path.exists(os.path.join(segm_mask_path)):
-                segm_mask = np.array(Image.open(os.path.join(segm_mask_path)).convert('L'))
-                segm_mask = torch.from_numpy(segm_mask)[None,None]
-            else:
-                segm_mask = None
-
 
         video = video.to(DEFAULT_DEVICE)
 
@@ -544,49 +475,53 @@ if __name__ == "__main__":
 
         pred_tracks, pred_visibility = model(
             video,
-            grid_size=args.grid_size * 5,
+            grid_size=args.grid_size,
             grid_query_frame=args.grid_query_frame,
-            backward_tracking=args.backward_tracking,
-            segm_mask=segm_mask
+            backward_tracking=args.backward_tracking
         )
-        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
-        # vis.visualize(
-        #     video,
-        #     pred_tracks,
-        #     pred_visibility,
-        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
-        #     filename=f"{video_names[random_index]}_grid",
-        # )
+        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=4)
+        vis.visualize(
+            video,
+            pred_tracks,
+            pred_visibility,
+            query_frame=0 if args.backward_tracking else args.grid_query_frame,
+            filename=f"{video_names[random_index]}_grid",
+        )
 
         points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], grid_size=args.grid_size)
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
-        pred_tracks, pred_visibility = model(video, queries=queries, segm_mask = segm_mask)
-        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
-        # vis.visualize(
-        #     video,
-        #     pred_tracks,
-        #     pred_visibility,
-        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
-        #     filename=f"{video_names[random_index]}_1st_sample",
-        # )
+        del pred_tracks, pred_visibility, points
+        torch.cuda.empty_cache()
+        pred_tracks, pred_visibility = model(video, queries=queries)
+        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=4)
+        vis.visualize(
+            video,
+            pred_tracks,
+            pred_visibility,
+            query_frame=0 if args.backward_tracking else args.grid_query_frame,
+            filename=f"{video_names[random_index]}_1st_sample",
+        )
 
         points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], num_samples=8, grid_size=args.grid_size)
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
+        del pred_tracks, pred_visibility, points
+        torch.cuda.empty_cache()
         pred_tracks, pred_visibility = model(video, queries=queries)
         
-        # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
-        # vis.visualize(
-        #     video,
-        #     pred_tracks,
-        #     pred_visibility,
-        #     query_frame=0 if args.backward_tracking else args.grid_query_frame,
-        #     filename=f"{video_names[random_index]}",
-        # )
+        vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=4)
+        vis.visualize(
+            video,
+            pred_tracks,
+            pred_visibility,
+            query_frame=0 if args.backward_tracking else args.grid_query_frame,
+            filename=f"{video_names[random_index]}",
+        )
 
-        selected_frames = sample_frames(video, video_names[random_index], pred_tracks, pred_visibility, strides=[15, 60, video.shape[1]-1])
-        # get_adaptive_stride_pair(pred_tracks, video_dims=(video.shape[-1], video.shape[-2]), video_name=video_names[random_index], target_shift=0.10)
+        selected_frames = sample_frames(args.output_root_dir, video, video_names[random_index], pred_tracks, pred_visibility, strides=[15, 58])
+        del pred_tracks, pred_visibility
+        torch.cuda.empty_cache()
 
         # 将视频进行反转播放，再跑一次
         video_name = video_names[random_index]
@@ -611,6 +546,8 @@ if __name__ == "__main__":
         points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], grid_size=args.grid_size)
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
+        del pred_tracks, pred_visibility, points
+        torch.cuda.empty_cache()
         pred_tracks, pred_visibility = model(video, queries=queries)
         # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
         # vis.visualize(
@@ -624,6 +561,8 @@ if __name__ == "__main__":
         points = sample_track_points(video, pred_tracks, pred_visibility, video_width=video.shape[-1], video_height=video.shape[-2], num_samples=10, grid_size=args.grid_size)
         frame_idx = 0
         queries = torch.tensor([ [ [frame_idx, x, y] for (x, y) in points ] ]).to(DEFAULT_DEVICE).to(torch.float32)
+        del pred_tracks, pred_visibility, points
+        torch.cuda.empty_cache()
         pred_tracks, pred_visibility = model(video, queries=queries)
         
         # vis = Visualizer(save_dir="./saved_videos", pad_value=120, linewidth=2)
@@ -635,9 +574,7 @@ if __name__ == "__main__":
         #     filename=f"{video_name}",
         # )
 
-        selected_frames = sample_frames(video, video_name, pred_tracks, pred_visibility, strides=[15, 60, video.shape[1]-1])
+        selected_frames = sample_frames(args.output_root_dir, video, video_name, pred_tracks, pred_visibility, strides=[15, 58])
 
         del video, pred_tracks, pred_visibility, queries
         torch.cuda.empty_cache()
-
-
