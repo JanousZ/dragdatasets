@@ -1,0 +1,399 @@
+{
+    "human": {
+        "orientation": [
+            "person looking left",
+            "person looking right",
+            "person looking up",
+            "person looking down",
+            "head turn portrait",
+            "woman turning head",
+            "man turning head",
+            "child looking around",
+            "person nodding head",
+            "person shaking head",
+            "woman looking over shoulder",
+            "man looking behind",
+            "person tilting head",
+            "body turning around",
+            "person spinning around"
+        ],
+        "expression": [
+            "person smiling close up",
+            "woman grinning portrait",
+            "man laughing face",
+            "child giggling",
+            "person frowning close up",
+            "angry face portrait",
+            "person yawning",
+            "woman yawning",
+            "mouth opening close up",
+            "surprised face portrait",
+            "shocked expression face",
+            "person crying close up",
+            "sad face portrait",
+            "eyebrows raising face",
+            "person winking eye",
+            "eyes blinking close up",
+            "person pouting lips",
+            "blowing kiss face",
+            "person scream face"
+        ],
+        "pose": [
+            "person stretching arms",
+            "woman yoga pose",
+            "man doing pushups",
+            "person doing squats",
+            "person bending forward",
+            "person lifting leg",
+            "person twisting torso",
+            "woman dancing slow",
+            "man dancing",
+            "child dancing",
+            "person walking sideways",
+            "person lunging exercise",
+            "person jumping slow motion",
+            "person kicking leg",
+            "person raising arms",
+            "person bowing down",
+            "person sit stand up",
+            "person crossing arms",
+            "ballet dancer slow motion"
+        ],
+        "fingers": [
+            "hand counting fingers",
+            "fist opening close up",
+            "fist clenching close up",
+            "hand waving close up",
+            "fingers snapping",
+            "thumbs up gesture",
+            "peace sign hand",
+            "hand grabbing object",
+            "hand releasing object",
+            "fingers typing close up",
+            "hand pointing gesture",
+            "hand spreading fingers",
+            "hand making fist"
+        ],
+        "position": [
+            "person walking forward",
+            "person walking slowly",
+            "person jogging slow motion",
+            "person stepping sideways",
+            "child running slow motion",
+            "person sliding left right",
+            "person leaning forward",
+            "person moving backward",
+            "person swaying standing",
+            "person shifting weight"
+        ]
+    },
+    "animal": {
+        "orientation": {
+            "cat": [
+                "cat looking around",
+                "cat turning head",
+                "cat head movement",
+                "kitten looking up"
+            ],
+            "dog": [
+                "dog looking around",
+                "dog turning head",
+                "dog head tilt",
+                "puppy looking up"
+            ],
+            "bird": [
+                "bird turning head",
+                "parrot head movement",
+                "owl looking around",
+                "eagle head turn"
+            ],
+            "horse": [
+                "horse turning head",
+                "horse looking around"
+            ],
+            "lion": [
+                "lion turning head",
+                "lion looking around"
+            ]
+        },
+        "face": {
+            "cat": [
+                "cat yawning",
+                "cat meowing close up",
+                "cat licking lips",
+                "cat blinking eyes",
+                "kitten meowing"
+            ],
+            "dog": [
+                "dog panting",
+                "dog barking",
+                "dog yawning",
+                "dog licking nose",
+                "puppy barking"
+            ],
+            "lion": [
+                "lion yawning",
+                "lion roaring close up",
+                "tiger roaring"
+            ],
+            "bird": [
+                "bird singing close up",
+                "parrot talking",
+                "bird beak opening"
+            ]
+        },
+        "pose": {
+            "cat": [
+                "cat stretching body",
+                "cat tail wagging",
+                "cat pawing object",
+                "cat arching back"
+            ],
+            "dog": [
+                "dog tail wagging",
+                "dog shaking body",
+                "dog stretching",
+                "dog raising paw"
+            ],
+            "bird": [
+                "bird spreading wings",
+                "bird flapping wings",
+                "bird preening feathers",
+                "bird landing slow motion"
+            ],
+            "horse": [
+                "horse galloping sideways",
+                "horse tail swinging",
+                "horse kicking legs"
+            ],
+            "butterfly": [
+                "butterfly wings flapping",
+                "butterfly wings close up"
+            ],
+            "fish": [
+                "fish tail waving",
+                "fish swimming close up",
+                "goldfish swimming"
+            ],
+            "elephant": [
+                "elephant trunk moving",
+                "elephant ear flapping",
+                "elephant trunk swinging"
+            ]
+        },
+        "position": {
+            "cat": [
+                "cat walking slowly",
+                "cat jumping slow motion",
+                "kitten running"
+            ],
+            "dog": [
+                "dog walking slowly",
+                "dog running slow motion",
+                "puppy running"
+            ],
+            "bird": [
+                "bird hopping ground",
+                "bird flying slow motion"
+            ],
+            "horse": [
+                "horse trotting sideways",
+                "horse walking slowly"
+            ],
+            "elephant": [
+                "elephant walking slowly"
+            ],
+            "kangaroo": [
+                "kangaroo hopping"
+            ]
+        }
+    },
+    "plant": {
+        "grow": {
+            "seed": [
+                "seed sprouting timelapse",
+                "plant growing timelapse",
+                "seedling emerging soil"
+            ],
+            "vine": [
+                "vine growing timelapse",
+                "ivy growing wall"
+            ],
+            "mushroom": [
+                "mushroom growing timelapse"
+            ]
+        },
+        "bloom": {
+            "rose": [
+                "rose blooming timelapse",
+                "rose opening close up",
+                "red rose blooming"
+            ],
+            "lily": [
+                "lily blooming timelapse",
+                "lily opening flower"
+            ],
+            "sunflower": [
+                "sunflower blooming timelapse",
+                "sunflower opening"
+            ],
+            "cherry": [
+                "cherry blossom blooming",
+                "sakura blooming timelapse"
+            ],
+            "general": [
+                "flower blooming timelapse",
+                "flower opening close up",
+                "flower bud opening"
+            ]
+        },
+        "swing": {
+            "tree": [
+                "tree swaying wind",
+                "branches swaying breeze",
+                "palm tree wind",
+                "willow tree wind"
+            ],
+            "grass": [
+                "grass blowing wind",
+                "wheat field breeze",
+                "tall grass swaying"
+            ],
+            "flower": [
+                "flower swaying wind",
+                "flower blowing breeze",
+                "dandelion wind"
+            ]
+        }
+    },
+    "daily_object": {
+        "translation": {
+            "vehicle": [
+                "toy train moving",
+                "toy car rolling",
+                "car sliding slowly",
+                "skateboard rolling"
+            ],
+            "drawer": [
+                "drawer opening close up",
+                "drawer sliding open",
+                "sliding door opening"
+            ],
+            "ball": [
+                "ball rolling slowly",
+                "marble rolling",
+                "bowling ball rolling"
+            ],
+            "conveyor": [
+                "object moving conveyor belt",
+                "sushi conveyor belt"
+            ]
+        },
+        "rotation": {
+            "toy": [
+                "spinning top",
+                "fidget spinner",
+                "pinwheel spinning wind"
+            ],
+            "product": [
+                "watch turntable rotation",
+                "shoe turntable product",
+                "product rotating display",
+                "bottle spinning"
+            ],
+            "fan": [
+                "fan blades turning",
+                "ceiling fan spinning",
+                "windmill turning"
+            ],
+            "wheel": [
+                "wheel spinning close up",
+                "pottery wheel spinning",
+                "steering wheel turning"
+            ]
+        },
+        "scaling": {
+            "balloon": [
+                "inflating balloon",
+                "balloon blowing up",
+                "balloon deflating"
+            ],
+            "umbrella": [
+                "opening umbrella",
+                "umbrella unfolding"
+            ],
+            "food": [
+                "bread rising timelapse",
+                "dough rising timelapse",
+                "popcorn popping"
+            ],
+            "pupil": [
+                "pupil dilating close up",
+                "eye pupil changing"
+            ]
+        },
+        "deformation": {
+            "soft": [
+                "squeezing sponge",
+                "pressing clay",
+                "kneading dough",
+                "squeezing stress ball"
+            ],
+            "elastic": [
+                "stretching rubber band",
+                "pulling elastic",
+                "stretching slime"
+            ],
+            "crush": [
+                "crushing soda can",
+                "crumpling paper",
+                "bending metal"
+            ]
+        },
+        "openclose": {
+            "book": [
+                "opening book close up",
+                "flipping book pages",
+                "closing book"
+            ],
+            "laptop": [
+                "opening laptop lid",
+                "closing laptop"
+            ],
+            "box": [
+                "opening box lid",
+                "opening gift box",
+                "unboxing close up"
+            ],
+            "door": [
+                "door opening slowly",
+                "door closing slowly",
+                "cabinet door opening"
+            ],
+            "jar": [
+                "opening jar lid",
+                "unscrewing bottle cap"
+            ]
+        },
+        "flip": {
+            "coin": [
+                "flipping coin slow motion",
+                "coin toss air"
+            ],
+            "food": [
+                "flipping pancake pan",
+                "tossing pizza dough",
+                "flipping burger"
+            ],
+            "card": [
+                "flipping playing card",
+                "turning card over",
+                "card trick flip"
+            ],
+            "page": [
+                "turning page close up",
+                "calendar page flip"
+            ]
+        }
+    }
+}

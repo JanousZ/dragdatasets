@@ -1,3 +1,7 @@
+## 数据对形式
+(src_image, tgt_image, src_points, tgt_points)
+用于表示drag-style image edit，并基于Fluxkontext微调
+
 ## 从现在的数据集构建中发现问题
 Q1：分布不均
 超八成是人脸移动的分布，这种分布体现的是移动的一致性，但是对于其余非平移拖拽则是OOD的。
@@ -65,29 +69,37 @@ A2.3: 网络爬虫：
 
 无论是哪种来源，必须对每个视频都进行主体及动作形式（变化形式）的标注，以便于分布统计
 
+## 数据优化
+植物类别：
+1.必须找单一主体可存在的植物，避开类似cherry、grass这类
+2.必须找存在外力干扰或能自身快速生成，带有瞬时变化的植物
+
 ## 自动化pipeline
 1.获取原始视频
-
-2.视频进行裁剪，长宽为8的倍数，并删除长或宽小于500的视频，切分为20帧或60帧的片段 
 ```bash
-cd dragdatasets
-python crop_and_split.py --root_dir ./A1_Dataset/animal/face
+python pexels.py --save_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2
 ```
 
-3.视频进行基于raft的运动分数初筛,每个视频最终保留6个切分片段
+2.视频进行裁剪，长宽为8的倍数，并删除长或宽小于500的视频，切分为20帧或60帧的片段，切分后删除源文件
+```bash
+cd dragdatasets
+python crop_and_split.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2
+```
+
+3.视频进行基于raft的运动分数初筛，每个视频最终选取6个切分片段
 root_dir命名规范：总数据集/rawvideo/子数据集
 output_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
 ```bash
 cd dragdatasets
-python motionscore_filter.py --root_dir ./A1_Dataset/animal/face --gpu_ids 1 2 --output_jsonl ./animal_face.jsonl
+python motionscore_filter.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2 --gpu_ids 0 2 --output_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2.jsonl --num_workers 32
 ```
 
-4.使用co-track进行点标注
+4.使用co-track进行点标注，同时过滤一部分动态相机视频
 output_root_dir命名规范：总数据集/selectframes/子数据集
 video_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
 ```bash
 cd dragdatasets/co-tracker
-python demo.py --offline --backward_tracking --gpu_id 1 --output_root_dir ./A1_selectframes --video_jsonl ../animal_face.jsonl --dataset_dir /home/yanzhang/dragdatasets
+python demo.py --offline --backward_tracking --gpu_id 2 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2.jsonl --grid_size 30
 ```
 
 5.人工挑选合适的pair

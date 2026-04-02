@@ -332,11 +332,6 @@ def save_annotated_frames(video_tensor, pred_tracks, pred_visibility, pair, stri
             vis = pred_visibility[0, t_idx, i].item()
             color = colors[i]
             center = (pos[0], pos[1])
-
-            # if vis > 0.5:
-            #     cv2.circle(frame, center, 5, color, -1) # 实心
-            # else:
-            #     cv2.circle(frame, center, 5, color, 2)  # 空心
             cv2.circle(frame, center, 10, color, -1)
 
         # 保存图片
