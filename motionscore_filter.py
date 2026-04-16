@@ -108,13 +108,14 @@ def run_quality_scoring(args):
         for res in pbar:
             raw_results.append(res)
 
-    # 按父文件夹归档
+    # 按父文件夹归档（转为相对路径）
     video_groups = defaultdict(list)
     for v_path_str, score in raw_results:
         if score > 0:
+            rel_path = os.path.relpath(v_path_str, args.root_dir)
             v_path_obj = Path(v_path_str)
-            group_key = str(v_path_obj.parent) 
-            video_groups[group_key].append((v_path_str, score))
+            group_key = str(v_path_obj.parent)
+            video_groups[group_key].append((rel_path, score))
 
     # 写入 JSONL
     saved_count = 0
@@ -122,9 +123,9 @@ def run_quality_scoring(args):
         # 按照路径排序，保证输出顺序相对稳定
         for group_path in sorted(video_groups.keys()):
             items = video_groups[group_path]
-            # 每个独立路径下的文件夹取最高分的 6 个
-            top_6 = sorted(items, key=lambda x: x[1], reverse=True)[:6]
-            for v_path, score in top_6:
+            # 每个独立路径下的文件夹取最高分的 top_k 个
+            top_k = sorted(items, key=lambda x: x[1], reverse=True)[:args.top_k]
+            for v_path, score in top_k:
                 line = json.dumps({"video_path": v_path, "motion_score": score}, ensure_ascii=False)
                 f.write(line + "\n")
                 saved_count += 1
@@ -137,6 +138,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_jsonl", type=str, default="motionscore_select.jsonl")
     parser.add_argument("--num_workers", type=int, default=16)
     parser.add_argument("--gpu_ids", type=int, nargs='+', default=[0])
+    parser.add_argument("--top_k", type=int, default=3, help="每个文件夹取运动分数最高的 k 个视频")
     
     args = parser.parse_args()
     run_quality_scoring(args)

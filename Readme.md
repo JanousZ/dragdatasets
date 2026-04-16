@@ -76,38 +76,84 @@ A2.3: 网络爬虫：
 
 ## 自动化pipeline
 1.获取原始视频
-```bash
+```bash 
 python pexels.py --save_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2
 ```
 
 2.视频进行裁剪，长宽为8的倍数，并删除长或宽小于500的视频，切分为20帧或60帧的片段，切分后删除源文件
-```bash
-cd dragdatasets
+```bash (base)
+cd dragdatasets 
 python crop_and_split.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2
+
+python crop_and_split.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M
 ```
 
-3.视频进行基于raft的运动分数初筛，每个视频最终选取6个切分片段
+3.视频进行基于raft的运动分数初筛，每个视频最终选取topk个切分片段
 root_dir命名规范：总数据集/rawvideo/子数据集
 output_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
 ```bash
 cd dragdatasets
-python motionscore_filter.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2 --gpu_ids 0 2 --output_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2.jsonl --num_workers 32
+python motionscore_filter.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2 --gpu_ids 0 --output_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2_ms.jsonl --num_workers 32  --top_k 3
+
+python motionscore_filter.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M --gpu_ids 0 --output_jsonl /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M/OpenVid-1M_ms.jsonl --num_workers 32  --top_k 3
 ```
 
-4.使用co-track进行点标注，同时过滤一部分动态相机视频
+4.使用co-track对3中过滤的视频进行点标注，同时过滤一部分动态相机视频
 output_root_dir命名规范：总数据集/selectframes/子数据集
 video_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
 ```bash
 cd dragdatasets/co-tracker
-python demo.py --offline --backward_tracking --gpu_id 2 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2.jsonl --grid_size 30
+python demo.py --offline --backward_tracking --gpu_id 0 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2_ms.jsonl --dataset_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2 --grid_size 30
+
+python demo.py --offline --backward_tracking --gpu_id 0 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M/OpenVid-1M_ms.jsonl --dataset_dir /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M --grid_size 30
+```
+
+4.1
+使用BiRefNet分离前景、背景；去除点对过多落于背景的数据对
+```bash (omini)
+python BiRefNet_filter.py \
+  --root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2  \
+  --output_jsonl /mnt/disk1/datasets/drag_data/train_json/pexels_tdv2_all.jsonl \
+  --device cuda:0 \
+  --bg_ratio 0.5 
+
+python BiRefNet_filter.py \
+  --root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M  \
+  --output_jsonl /mnt/disk1/datasets/drag_data/train_json/OpenVid-1M_all.jsonl \
+  --device cuda:0 \
+  --bg_ratio 0.5 
+```
+
+4.2: 位移筛（在同一个 jsonl 上原地操作）
+```bash
+python displacement_filter.py \
+  --jsonl /mnt/disk1/datasets/drag_data/train_json/pexels_tdv2_all.jsonl \
+  --root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 \
+  --min_mean_ratio 0.01 \
+  --min_std_ratio 0.01
+
+python displacement_filter.py \
+  --jsonl /mnt/disk1/datasets/drag_data/train_json/OpenVid-1M_all.jsonl \
+  --root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M \
+  --min_mean_ratio 0.01 \
+  --min_std_ratio 0.01
+```
+
+4.3可选去重
+```bash
+python clean_duplicates.py --jsonl /mnt/disk1/datasets/drag_data/train_json/pexels_tdv2_all.jsonl
+
+python clean_duplicates.py --jsonl /mnt/disk1/datasets/drag_data/train_json/OpenVid-1M_all.jsonl
 ```
 
 5.人工挑选合适的pair
 root_dir命名规范：总数据集/selectframes/子数据集
-output_jsonl命名规范：总数据集/train_json/子数据集_pairs.jsonl
+output_jsonl命名规范：总数据集/train_json/子数据集.jsonl
 ```bash
 cd dragdatasets
-python manual_select.py --root_dir ./co-tracker/A1_selectframes --output_jsonl ./A1_pairs.jsonl
+python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --output_jsonl /mnt/disk1/datasets/drag_data/train_json/pexels_tdv2_all.jsonl
+
+python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M --output_jsonl /mnt/disk1/datasets/drag_data/train_json/OpenVid-1M_all.jsonl
 ```
 
 ## 视频点集配对标注

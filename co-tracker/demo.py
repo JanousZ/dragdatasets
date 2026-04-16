@@ -323,8 +323,8 @@ def save_annotated_frames(video_tensor, pred_tracks, pred_visibility, pair, stri
         frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR) # 假设输入是RGB
 
         cv2.imwrite(os.path.join(save_dir, f"original_frame_{t_idx}.png"), frame)  # 保存原始帧
-        # 保存 pred_tracks 和 pred_visibility
-        np.save(os.path.join(save_dir, f"pred_track_frame_{t_idx}"), pred_tracks[0,t_idx].cpu().numpy())
+        # 保存 pred_tracks 和 pred_visibility（文件名带 stride 避免不同 stride 共享帧时互相覆盖）
+        np.save(os.path.join(save_dir, f"pred_track_stride_{stride}_frame_{t_idx}"), pred_tracks[0,t_idx].cpu().numpy())
 
         # 绘制每一个点
         for i in range(N):
@@ -525,21 +525,42 @@ if __name__ == "__main__":
             print(f"Skipping {video_name} as it already exists.")
             continue
 
-        video = read_video_from_path(video_path)
-        video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(DEFAULT_DEVICE)
-        video_flip = video.flip(dims=[1])
+        if not os.path.exists(video_path):
+            print(f"视频文件不存在: {video_path}，跳过")
+            continue
 
-        # 第一阶段：用 T//2 作为 query_frame，不保存，仅为拿到 selected_frames（stride=15 的 t1）
-        T = video.shape[1]
-        selected_fwd  = process_video_pass(model, video,      video_name,          args, args.output_root_dir, visualize=False, query_frame=T//2, is_save=False)
-        selected_flip = process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=T//2, is_save=False)
+        try:
+            video = read_video_from_path(video_path)
+            video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].float().to(DEFAULT_DEVICE)
+            video_flip = video.flip(dims=[1])
 
-        # 第二阶段：以 stride=15 对应的 t1 为 query_frame 重新跑，保存结果
-        t1_fwd  = selected_fwd[15][0]  if (selected_fwd  and selected_fwd.get(15)  and selected_fwd[15]  is not None) else None
-        t1_flip = selected_flip[15][0] if (selected_flip and selected_flip.get(15) and selected_flip[15] is not None) else None
+            # 第一阶段：用 T//2 作为 query_frame，不保存，仅为拿到 selected_frames（stride=15 的 t1）
+            T = video.shape[1]
+            selected_fwd  = process_video_pass(model, video,      video_name,          args, args.output_root_dir, visualize=False, query_frame=T//2, is_save=False)
+            selected_flip = process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=T//2, is_save=False)
 
-        process_video_pass(model, video,      video_name,          args, args.output_root_dir, visualize=False, query_frame=t1_fwd,  is_save=True)
-        process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=t1_flip, is_save=True)
+            # 正向和翻转都因相机运动被跳过，删除源视频
+            if selected_fwd is None and selected_flip is None:
+                if os.path.exists(video_path):
+                    os.remove(video_path)
+                    print(f"已删除相机运动视频: {video_path}")
+                del video, video_flip
+                torch.cuda.empty_cache()
+                continue
 
-        del video, video_flip
-        torch.cuda.empty_cache()
+            # 第二阶段：以 stride=15 对应的 t1 为 query_frame 重新跑，保存结果
+            t1_fwd  = selected_fwd[15][0]  if (selected_fwd  and selected_fwd.get(15)  and selected_fwd[15]  is not None) else None
+            t1_flip = selected_flip[15][0] if (selected_flip and selected_flip.get(15) and selected_flip[15] is not None) else None
+
+            process_video_pass(model, video,      video_name,          args, args.output_root_dir, visualize=False, query_frame=t1_fwd,  is_save=True)
+            process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=t1_flip, is_save=True)
+
+            del video, video_flip
+            torch.cuda.empty_cache()
+
+        except torch.cuda.OutOfMemoryError:
+            print(f"GPU OOM，跳过视频: {video_name} ({video_path})")
+            torch.cuda.empty_cache()
+            continue
+    
+    print("处理完成！")
