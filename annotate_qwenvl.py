@@ -176,11 +176,18 @@ def main():
             if parsed["suitable"]:
                 n_ok += 1
                 tag = "OK"
+                pairs = [
+                    f"{ins['operation']}/{ins['direction']}" if ins.get("direction")
+                    else ins["operation"]
+                    for ins in parsed["instructions"]
+                ]
+                detail = f"pairs={pairs}"
             else:
                 n_reject += 1
                 tag = "REJECT"
+                detail = f"ops={target_ops}"
             elapsed = time.time() - t0
-            print(f"[{i+1}/{len(image_paths)}] {rel}  {tag}  ops={target_ops}  ({elapsed:.1f}s)")
+            print(f"[{i+1}/{len(image_paths)}] {rel}  {tag}  {detail}  ({elapsed:.1f}s)")
     finally:
         out_f.close()
 
