@@ -1,10 +1,47 @@
+"""
+python QwenImageEdit.py --gpu_ids 0,2,3
+"""
 import argparse
 import json
 import os
+import sys
+import time
+
+
+def _parse_gpu_ids(s):
+    ids = [int(x) for x in s.split(",") if x.strip() != ""]
+    if not ids:
+        raise argparse.ArgumentTypeError("--gpu_ids must contain at least one id")
+    if len(ids) != len(set(ids)):
+        raise argparse.ArgumentTypeError(f"--gpu_ids has duplicates: {ids}")
+    return ids
+
+
+def _early_parse_gpu_ids(argv):
+    """Pluck --gpu_ids out of argv before torch is imported, so we can pin
+    CUDA_VISIBLE_DEVICES first. bitsandbytes' 4-bit caching-allocator warmup
+    fires on the *current* CUDA device during from_pretrained, so if we don't
+    hide unselected GPUs we'll OOM on whichever GPU is busy (typically GPU 0).
+    """
+    for i, arg in enumerate(argv):
+        if arg == "--gpu_ids" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--gpu_ids="):
+            return arg.split("=", 1)[1]
+    return None
+
+
+_user_gpu_ids_str = _early_parse_gpu_ids(sys.argv)
+if _user_gpu_ids_str is not None:
+    # validate now so we fail before importing torch on a bad value
+    _user_gpu_ids = _parse_gpu_ids(_user_gpu_ids_str)
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(str(g) for g in _user_gpu_ids)
+else:
+    _user_gpu_ids = None
+
 import numpy as np
 import torch
 from PIL import Image
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 def color_fix(source_img, edited_img):
@@ -55,15 +92,28 @@ def build_pipe(gpu_id):
     pipe.enable_model_cpu_offload(gpu_id=gpu_id)
     return pipe
 
-num_gpus = max(1, torch.cuda.device_count())
-pipes = [build_pipe(i) for i in range(num_gpus)]
+# If the user did not pass --gpu_ids, default to every GPU visible to torch
+# (CUDA_VISIBLE_DEVICES was not touched, so these are the real ids).
+if _user_gpu_ids is None:
+    _user_gpu_ids = list(range(max(1, torch.cuda.device_count())))
 
 ap = argparse.ArgumentParser()
 ap.add_argument("--jsonl", default="/home/yanzhang/dragdatasets/instructions.jsonl")
 ap.add_argument("--src_root", default="/home/yanzhang/dragdatasets/pexels_tdv3")
 ap.add_argument("--out_root", default="/home/yanzhang/dragdatasets/pexels_tdv3_edited")
 ap.add_argument("--steps", type=int, default=40)
+ap.add_argument("--gpu_ids", type=_parse_gpu_ids, default=_user_gpu_ids,
+                help="Comma-separated CUDA device ids to run on, e.g. '0,2,3'. "
+                     "One pipeline is built per id and records are sharded across them.")
 args = ap.parse_args()
+
+# Two views of the GPU list:
+#   gpu_ids       - what the user wrote, used in print/log lines
+#   torch_indices - 0..N-1 indices torch sees AFTER CUDA_VISIBLE_DEVICES remap
+gpu_ids = args.gpu_ids
+torch_indices = list(range(len(gpu_ids)))
+print(f"[init] building pipes on GPUs {gpu_ids}")
+pipes = [build_pipe(t) for t in torch_indices]
 
 # 推荐的非漂移分辨率桶（社区验证：方形会色偏/糊掉，issue #243）
 # tgt 用 ~1MP 的非方形桶；src 用对应的一半分辨率，方向跟随原图
@@ -92,8 +142,9 @@ def fit_to_bucket(im, bucket_w, bucket_h):
 with open(args.jsonl, "r", encoding="utf-8") as f:
     records = [json.loads(line) for line in f if line.strip()]
 
-def worker(gpu_id, my_records):
-    pipe = pipes[gpu_id]
+def worker(slot, my_records):
+    gpu_id = gpu_ids[slot]
+    pipe = pipes[slot]
     for rec in my_records:
         if rec.get("error") or not rec.get("suitable"):
             continue
@@ -138,8 +189,9 @@ def worker(gpu_id, my_records):
             #edited.save(tgt_save)
             print(f"[ok gpu{gpu_id}] {rel}  #{i}  -> {tgt_save}")
 
-chunks = [records[i::num_gpus] for i in range(num_gpus)]
-with ThreadPoolExecutor(max_workers=num_gpus) as ex:
-    futures = [ex.submit(worker, i, chunks[i]) for i in range(num_gpus)]
+n_workers = len(gpu_ids)
+chunks = [records[i::n_workers] for i in range(n_workers)]
+with ThreadPoolExecutor(max_workers=n_workers) as ex:
+    futures = [ex.submit(worker, i, chunks[i]) for i in range(n_workers)]
     for f in futures:
         f.result()
