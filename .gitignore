@@ -4,3 +4,8 @@
 labeled_data.jsonl
 A1_Dataset/
 co-tracker/A1_selectframes/
+
+*.json
+*.jsonl
+
+pexels_tdv3/

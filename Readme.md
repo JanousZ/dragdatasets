@@ -46,7 +46,7 @@ A1:目标分布
 平移（Translation）	整体移动、局部移动
 旋转（Rotation）	整体旋转、局部旋转
 缩放（Scaling/Size Change）	放大、缩小
-形变（Deformation）	弯曲、拉伸、压缩、开合
+形变（Deformation）	拉长、缩短、压缩、开合、弯曲、边界蔓延、边界收缩
 开闭（Open/Close）	门、抽屉、盒子等
 翻转（Flip/Invert）	上下翻转、左右翻转
 
@@ -106,6 +106,8 @@ cd dragdatasets/co-tracker
 python demo.py --offline --backward_tracking --gpu_id 0 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2_ms.jsonl --dataset_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2 --grid_size 30
 
 python demo.py --offline --backward_tracking --gpu_id 0 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M/OpenVid-1M_ms.jsonl --dataset_dir /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M --grid_size 30
+
+python demo.py --offline --backward_tracking --gpu_id 0 --grid_size 30 --video_path /home/yanzhang/LTX-2/sofa.mp4 --output_root_dir /home/yanzhang/LTX-2
 ```
 
 4.1
@@ -154,6 +156,11 @@ cd dragdatasets
 python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --output_jsonl /mnt/disk1/datasets/drag_data/train_json/pexels_tdv2_all.jsonl
 
 python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M --output_jsonl /mnt/disk1/datasets/drag_data/train_json/OpenVid-1M_all.jsonl
+```
+
+6.删除标注为no的数据
+```bash
+python /home/yanzhang/dragdatasets/clean_no_pairs.py
 ```
 
 ## 视频点集配对标注
