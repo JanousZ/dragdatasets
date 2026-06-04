@@ -1,6 +1,6 @@
 ## 数据对形式
 (src_image, tgt_image, src_points, tgt_points)
-用于表示drag-style image edit，并基于Fluxkontext微调
+用于表示drag-style image edit
 
 ## 从现在的数据集构建中发现问题
 Q1：分布不均
@@ -26,10 +26,8 @@ Q6：视频时长
 A1:目标分布
 人
 面向变化（Orientation）例如：头部旋转（左右、上下）、身体朝向、头部朝向
-表情变化（Expression）例如：微笑（嘴角慢慢扬起）、皱眉（眉部变化）、张嘴过程、惊讶过程等
 姿态（Pose/Body Movement）例如：四肢动作改变
-手指/手部动作（Fingers/Hands）例如：手指动作改变
-位置移动 假如不是以上四种变化，但是人的位置发生了明显移动
+位置移动 假如不是以上三种变化，但是人的位置发生了明显移动
 
 动物
 面向（Orientation）例如：左右转头、抬头、低头、身体朝向改变
@@ -74,10 +72,10 @@ A2.3: 网络爬虫：
 1.必须找单一主体可存在的植物，避开类似cherry、grass这类
 2.必须找存在外力干扰或能自身快速生成，带有瞬时变化的植物
 
-## 自动化pipeline
+## 自动化pipeline1
 1.获取原始视频
 ```bash 
-python pexels.py --save_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2
+python pexels.py --save_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv4_v --type "video"
 ```
 
 2.视频进行裁剪，长宽为8的倍数，并删除长或宽小于500的视频，切分为20帧或60帧的片段，切分后删除源文件
@@ -86,6 +84,8 @@ cd dragdatasets
 python crop_and_split.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2
 
 python crop_and_split.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M
+
+python crop_and_split.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/iPER-video
 ```
 
 3.视频进行基于raft的运动分数初筛，每个视频最终选取topk个切分片段
@@ -93,7 +93,7 @@ root_dir命名规范：总数据集/rawvideo/子数据集
 output_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
 ```bash
 cd dragdatasets
-python motionscore_filter.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2 --gpu_ids 0 --output_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2_ms.jsonl --num_workers 32  --top_k 3
+python motionscore_filter.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/iPER-video --gpu_ids 0 1 2 --output_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/iPER-video_ms.jsonl --num_workers 32  --top_k 6
 
 python motionscore_filter.py --root_dir /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M --gpu_ids 0 --output_jsonl /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M/OpenVid-1M_ms.jsonl --num_workers 32  --top_k 3
 ```
@@ -103,7 +103,7 @@ output_root_dir命名规范：总数据集/selectframes/子数据集
 video_jsonl命名规范：总数据集/rawvideo/子数据集/子数据集_ms.jsonl
 ```bash
 cd dragdatasets/co-tracker
-python demo.py --offline --backward_tracking --gpu_id 0 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/pexels_tdv2_ms.jsonl --dataset_dir /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2 --grid_size 30
+python demo.py --offline --backward_tracking --gpu_id 0 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/iPER-video --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/pexels_tdv2/iPER-video_ms.jsonl --dataset_dir /mnt/disk1/datasets/drag_data/rawvideo/iPER-video --grid_size 30
 
 python demo.py --offline --backward_tracking --gpu_id 0 --output_root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M --video_jsonl /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M/OpenVid-1M_ms.jsonl --dataset_dir /mnt/disk1/datasets/drag_data/rawvideo/OpenVid-1M --grid_size 30
 
@@ -153,7 +153,7 @@ root_dir命名规范：总数据集/selectframes/子数据集
 output_jsonl命名规范：总数据集/train_json/子数据集.jsonl
 ```bash
 cd dragdatasets
-python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/pexels_tdv2 --output_jsonl /mnt/disk1/datasets/drag_data/train_json/pexels_tdv2_all.jsonl
+python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/iPER-video --output_jsonl /mnt/disk1/datasets/drag_data/train_json/iPER-video_all.jsonl
 
 python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/OpenVid-1M --output_jsonl /mnt/disk1/datasets/drag_data/train_json/OpenVid-1M_all.jsonl
 ```
@@ -162,6 +162,9 @@ python manual_select.py --root_dir /mnt/disk1/datasets/drag_data/selectframe/Ope
 ```bash
 python /home/yanzhang/dragdatasets/clean_no_pairs.py
 ```
+
+## pipeline2
+1.获取原始图像
 
 ## 视频点集配对标注
 1.如何确定视频点集追踪点？
@@ -194,3 +197,19 @@ hf download nkp37/OpenVid-1M \
 wget -c --tries=0 --read-timeout=20 --waitretry=5 https://huggingface.co/datasets/nkp37/OpenVid-1M/resolve/main/OpenVid_part0.zip
 unzip -j OpenVid_part0.zip -d video_folder
 ```
+
+## 已有类别
+clothes: skirt 137, pants 100, shirt 78
+lengthen 233 · shorten 233 · flare_hem_outward 103 · taper_hem_inward 102 · taper_leg 77 · flare_leg 65 · flare_sleeve 59 · taper_sleeve 58
+
+design_furniture: geometric_modern 80, material_focused 79, organic_series 78
+wider 117 · narrower 117 · flare_edge_outward 117 · taller 116 · shorter 115 · curve_part 114
+
+landscape: contrasts 80, boundaries 79
+shift_boundary_up 78 · boundary_contract 78 · scallop_boundary 78 · boundary_spread 73 · shift_boundary_down 72 · curve_boundary 71
+
+text_in_environment: urban_commercial 80, simple_signs 72, graphic_assets 70, traffic_signs 60, artistic_text 57
+translate 107 · scale_down 103 · tilt 103 · stretch_horizontal 101 · scale_up 101 · flip_horizontal 101 · rotate 100 · squeeze_vertical 100 · bend_panel 99 · curve_baseline 96
+
+## 已排除数据集
+Penn Action 原因：分辨率太小

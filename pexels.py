@@ -134,7 +134,7 @@ def recursive_search_and_download(data, current_path, headers, per_kw, max_durat
 def parse_args():
     parser = argparse.ArgumentParser(description="从 Pexels 下载视频或图片")
     parser.add_argument("--api_key", type=str, default="xZ5YrEIVoaUsUzDNJ4S46iLbT9FWTGLdPpFkQkzQ4KyIHOTOhjQrJrlc", help="Pexels API Key")
-    parser.add_argument("--json_file", type=str, default="target_distribution_v3.json")
+    parser.add_argument("--json_file", type=str, default="target_distribution_v4.json")
     parser.add_argument("--save_dir", type=str, required=True)
     parser.add_argument("--type", choices=["video", "image"], required=True, help="下载类型: video 或 image")
     parser.add_argument("--per_kw", type=int, default=20)

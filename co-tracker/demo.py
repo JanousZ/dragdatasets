@@ -537,7 +537,8 @@ if __name__ == "__main__":
             # 第一阶段：用 T//2 作为 query_frame，不保存，仅为拿到 selected_frames（stride=15 的 t1）
             T = video.shape[1]
             selected_fwd  = process_video_pass(model, video,      video_name,          args, args.output_root_dir, visualize=False, query_frame=T//2, is_save=False)
-            selected_flip = process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=T//2, is_save=False)
+            # selected_flip = process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=T//2, is_save=False)
+            selected_flip  = None
 
             # 正向和翻转都因相机运动被跳过，删除源视频
             if selected_fwd is None and selected_flip is None:
@@ -550,10 +551,10 @@ if __name__ == "__main__":
 
             # 第二阶段：以 stride=15 对应的 t1 为 query_frame 重新跑，保存结果
             t1_fwd  = selected_fwd[15][0]  if (selected_fwd  and selected_fwd.get(15)  and selected_fwd[15]  is not None) else None
-            t1_flip = selected_flip[15][0] if (selected_flip and selected_flip.get(15) and selected_flip[15] is not None) else None
+            # t1_flip = selected_flip[15][0] if (selected_flip and selected_flip.get(15) and selected_flip[15] is not None) else None
 
             process_video_pass(model, video,      video_name,          args, args.output_root_dir, visualize=False, query_frame=t1_fwd,  is_save=True)
-            process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=t1_flip, is_save=True)
+            # process_video_pass(model, video_flip, video_name + "_flip", args, args.output_root_dir, visualize=False, query_frame=t1_flip, is_save=True)
 
             del video, video_flip
             torch.cuda.empty_cache()
